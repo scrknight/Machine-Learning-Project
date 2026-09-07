@@ -1,0 +1,62 @@
+name: Tourism Project Pipeline
+
+on:
+  push:
+    branches:
+      - main   # Automatically triggers on every push to the main branch
+
+jobs:
+
+  register-dataset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install Dependencies
+        run: pip install -r tourism_project/requirements.txt
+      - name: Register Dataset on Hugging Face Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python tourism_project/model_building/data_register.py
+
+  data-prep:
+    needs: register-dataset
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install Dependencies
+        run: pip install -r tourism_project/requirements.txt
+      - name: Run Data Preparation
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python tourism_project/model_building/prep.py
+
+  model-training:
+    needs: data-prep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install Dependencies
+        run: pip install -r tourism_project/requirements.txt
+      - name: Start MLflow Tracking Server
+        run: |
+          nohup mlflow ui --host 0.0.0.0 --port 5000 &
+          sleep 5
+      - name: Train, Tune, and Register Model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python tourism_project/model_building/train.py
+
+  # No separate "deploy-hosting" job: the deployment files (app.py,
+  # requirements.txt) already live in this repo, and Streamlit Community
+  # Cloud watches this repo directly. Once the Space is connected (a
+  # one-time manual step), every push to main that lands here also
+  # triggers Streamlit Cloud to rebuild automatically — no script needed.
